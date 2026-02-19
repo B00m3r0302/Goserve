@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,64 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
+}
+
+func validateChirp(w http.ResponseWriter, r *http.Request) {
+	type data struct {
+		Body string `json:"body"`
+	}
+
+	type broken struct {
+		Error string `json:"error"`
+	}
+
+	type valid struct {
+		Valid bool `json:"valid"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	dat := data{}
+	err := decoder.Decode(&dat)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		message := broken{
+			Error: "Something went wrong",
+		}
+		errDat, err := json.Marshal(message)
+		if err != nil {
+			panic(err)
+		}
+		w.Write(errDat)
+		return
+	}
+
+	if len(dat.Body) > 140 {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		message := broken{
+			Error: "Chirp is too long",
+		}
+		badDat, err := json.Marshal(message)
+		if err != nil {
+			panic(err)
+		}
+		w.Write(badDat)
+		return
+	}
+
+	good := valid{
+		Valid: true,
+	}
+
+	goodDat, err := json.Marshal(good)
+	if err != nil {
+		panic(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(goodDat)
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -46,6 +105,8 @@ func main() {
 	mux.Handle("GET /api/healthz", healthHandler)
 	mux.HandleFunc("GET /admin/metrics", c.hitsCount)
 	mux.HandleFunc("POST /admin/reset", c.hitsReset)
+	mux.HandleFunc("POST /api/validate_chirp", validateChirp)
+
 	server := &http.Server{
 		Addr:    port,
 		Handler: mux,

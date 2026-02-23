@@ -1,11 +1,17 @@
 package main
 
 import (
+	_ "github.com/lib/pq"
+)
+
+import (
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"regexp"
+
+	"github.com/B00m3r0302/Goserve/internal/database"
 )
 
 func healthCheck(w http.ResponseWriter, r *http.Request) {
@@ -99,9 +105,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 		Error string `json:"error"`
 	}
 
-	type valid struct {
-		Valid bool `json:"valid"`
-	}
+	body := db.CreateChirpParams{}
 
 	decoder := json.NewDecoder(r.Body)
 	dat := input{}
@@ -147,13 +151,13 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	forn := regexp.MustCompile(`(?i)fornax`)
 	fornresult := forn.ReplaceAllString(sharesult, "****")
 
-	cleanedResult := cleanedBody{CleanedBody: fornresult}
-	cleanedDat, err := json.Marshal(cleanedResult)
+	cleanedDat := cleanedBody{CleanedBody: fornresult}
+	cleanedResult, err := json.Marshal(cleanedDat)
 	if err != nil {
 		panic(err)
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(cleanedDat))
+	w.Write([]byte(cleanedResult))
 }

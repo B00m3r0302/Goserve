@@ -234,3 +234,16 @@ func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(final)
 }
+
+func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
+	ChirpID := r.PathValue("chirpID")
+	user, err := cfg.dbQueries.QueryUserById(r.Context(), uuid.MustParse(chirpIDStr))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to get the user...\n"))
+		w.Write([]byte(err.Error()))
+	}
+
+	userId := user.ID
+
+}

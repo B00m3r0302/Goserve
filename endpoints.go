@@ -1,6 +1,9 @@
 package main
 
 import (
+	"time"
+
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
 
@@ -97,15 +100,21 @@ func (cfg *apiConfig) hitsReset(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	type input struct {
-		Body   string `json:"body"`
-		UserId string `json:"user_id"`
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
 	}
 
 	type broken struct {
 		Error string `json:"error"`
 	}
 
-	body := db.CreateChirpParams{}
+	type chirpResponse struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
 
 	decoder := json.NewDecoder(r.Body)
 	dat := input{}
@@ -152,12 +161,40 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	fornresult := forn.ReplaceAllString(sharesult, "****")
 
 	cleanedDat := cleanedBody{CleanedBody: fornresult}
-	cleanedResult, err := json.Marshal(cleanedDat)
+
+	params := database.CreateChirpParams{
+		Body:   cleanedDat.CleanedBody,
+		UserID: dat.UserID,
+	}
+
+	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), params)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		message := broken{
+			Error: "Something went wrong",
+		}
+		errDat, err := json.Marshal(message)
+		if err != nil {
+			panic(err)
+		}
+		w.Write(errDat)
+	}
+
+	response := chirpResponse{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	}
+
+	final, err := json.Marshal(response)
 	if err != nil {
 		panic(err)
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(cleanedResult))
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(final))
 }

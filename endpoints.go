@@ -236,14 +236,42 @@ func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
-	ChirpID := r.PathValue("chirpID")
-	user, err := cfg.dbQueries.QueryUserById(r.Context(), uuid.MustParse(chirpIDStr))
+	type chirpResponse struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	chirpIDStr := r.PathValue("chirpID")
+	ChirpID, err := uuid.Parse(chirpIDStr)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Something went wrong while trying to get the user...\n"))
+		http.Error(w, "Invalid chirp ID", http.StatusNotFound)
+		return
+	}
+
+	ok, err := cfg.dbQueries.QueryChirpById(r.Context(), ChirpID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Something went wrong"))
 		w.Write([]byte(err.Error()))
 	}
 
-	userId := user.ID
+	response := chirpResponse{
+		ID:        ok.ID,
+		CreatedAt: ok.CreatedAt,
+		UpdatedAt: ok.UpdatedAt,
+		Body:      ok.Body,
+		UserID:    ok.UserID,
+	}
 
+	final, err := json.Marshal(response)
+	if err != nil {
+		panic(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(final)
 }

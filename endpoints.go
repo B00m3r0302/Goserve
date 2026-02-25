@@ -101,17 +101,17 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 	type data struct {
-		Email     string `json:"email"`
-		Password  string `json:"password"`
-		ExpiresIn int    `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	type createdUser struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-		Token     string    `json:"token"`
+		ID           uuid.UUID `json:"id"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
+		Email        string    `json:"email"`
+		Token        string    `json:"token"`
+		RefreshToken string    `json:"refresh_token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -142,15 +142,8 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var seconds int
-	if dat.ExpiresIn == 0 {
-		seconds = 3600
-	} else {
-		seconds = dat.ExpiresIn
-	}
-
 	// Generate JWT
-	jwt, err := auth.MakeJWT(user.ID, cfg.secretKey, time.Duration(seconds)*time.Second)
+	jwt, err := auth.MakeJWT(user.ID, cfg.secretKey)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to generate the JWT...\n"))
@@ -158,12 +151,32 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Refresh Token
+	refreshToken := auth.MakeRefreshToken()
+
+	// Store refresh token in database
+	addRefreshTokenParams := database.AddRefreshTokenParams{
+		Token:     refreshToken,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(time.Hour * 24 * 60),
+	}
+
+	err = cfg.dbQueries.AddRefreshToken(r.Context(), addRefreshTokenParams)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to store the refresh token...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println(err)
+		return
+	}
+
 	loggedInUser := createdUser{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     jwt,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        jwt,
+		RefreshToken: refreshToken,
 	}
 	response, err := json.Marshal(loggedInUser)
 	if err != nil {
@@ -391,4 +404,32 @@ func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write(final)
+}
+
+func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"No token provided\"}"))
+		log.Println("Error getting JWT, was not provided: %s", err)
+		return
+	}
+
+	_, err = auth.ValidateJWT(token, cfg.secretKey)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Header is not valid\"}"))
+		log.Println("Error validating JWT INVALID: %s", err)
+		return
+	}
+
+	err = cfg.dbQueries.CheckTokenExpired(r.Context(), token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Token is expired\"}"))
+		log.Println("Error validating JWT EXPIRED: %s", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+
 }

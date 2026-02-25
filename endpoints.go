@@ -1,8 +1,10 @@
 package main
 
 import (
+	"log"
 	"time"
 
+	"github.com/B00m3r0302/Goserve/internal/auth"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
@@ -25,7 +27,15 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	type data struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	type createdUser struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -34,28 +44,45 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		message := map[string]string{"error": "Something went wrong"}
-		errDat, err := json.Marshal(message)
-		if err != nil {
-			panic(err)
-		}
+		message := map[string]string{"error": "could not decode JSON body"}
+		errDat, _ := json.Marshal(message)
 		w.Write(errDat)
 		return
 	}
 
-	newUser, err := cfg.dbQueries.CreateUser(r.Context(), dat.Email)
+	hashedPassword, err := auth.HashPassword(dat.Password)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while hashing the password...\n"))
+		w.Write([]byte(err.Error()))
+
+		log.Fatal(err)
+	}
+
+	newUserParams := database.InsertUserParams{
+		Email:          dat.Email,
+		HashedPassword: hashedPassword,
+	}
+
+	err = cfg.dbQueries.InsertUser(r.Context(), newUserParams)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		message := map[string]string{"error": "Something went wrong"}
-		errDat, err := json.Marshal(message)
-		if err != nil {
-			panic(err)
-		}
+		message := map[string]string{"error": "Something went wrong while inserting the user into the database"}
+		errDat, _ := json.Marshal(message)
 		w.Write(errDat)
+		log.Fatal(err)
 		return
 	}
-	response := User{
+
+	newUser, err := cfg.dbQueries.LookupUserByEmail(r.Context(), dat.Email)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to get the user by email...\n"))
+		w.Write([]byte(err.Error()))
+	}
+
+	response := createdUser{
 		ID:        newUser.ID,
 		CreatedAt: newUser.CreatedAt,
 		UpdatedAt: newUser.UpdatedAt,
@@ -69,6 +96,73 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
 	w.Write(returnMsg)
+
+}
+
+func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
+	type data struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	type createdUser struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	dat := data{}
+	err := decoder.Decode(&dat)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		message := map[string]string{"error": "could not decode JSON body"}
+		errDat, _ := json.Marshal(message)
+		w.Write(errDat)
+		return
+	}
+
+	// Check password hash
+	user, err := cfg.dbQueries.LookupUserByEmail(r.Context(), dat.Email)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to get the users password...\n"))
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	match, err := auth.CheckPasswordHash(dat.Password, user.HashedPassword)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to check the password...\n"))
+		return
+	}
+
+	loggedInUser := createdUser{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	}
+	response, err := json.Marshal(loggedInUser)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to marshal the user...\n"))
+		return
+	}
+
+	if match == true {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(response)
+
+	} else {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Login failed\"}"))
+	}
 
 }
 
@@ -125,10 +219,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 		message := broken{
 			Error: "Something went wrong",
 		}
-		errDat, err := json.Marshal(message)
-		if err != nil {
-			panic(err)
-		}
+		errDat, _ := json.Marshal(message)
 		w.Write(errDat)
 		return
 	}
@@ -139,10 +230,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 		message := broken{
 			Error: "Chirp is too long",
 		}
-		badDat, err := json.Marshal(message)
-		if err != nil {
-			panic(err)
-		}
+		badDat, _ := json.Marshal(message)
 		w.Write(badDat)
 		return
 	}
@@ -174,10 +262,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 		message := broken{
 			Error: "Something went wrong",
 		}
-		errDat, err := json.Marshal(message)
-		if err != nil {
-			panic(err)
-		}
+		errDat, _ := json.Marshal(message)
 		w.Write(errDat)
 	}
 
@@ -189,10 +274,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 		UserID:    chirp.UserID,
 	}
 
-	final, err := json.Marshal(response)
-	if err != nil {
-		panic(err)
-	}
+	final, _ := json.Marshal(response)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)

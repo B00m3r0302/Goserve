@@ -56,7 +56,7 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Something went wrong while hashing the password...\n"))
 		w.Write([]byte(err.Error()))
 
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	newUserParams := database.InsertUserParams{
@@ -71,7 +71,7 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 		message := map[string]string{"error": "Something went wrong while inserting the user into the database"}
 		errDat, _ := json.Marshal(message)
 		w.Write(errDat)
-		log.Fatal(err)
+		log.Println(err)
 		return
 	}
 
@@ -101,8 +101,9 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 	type data struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email     string `json:"email"`
+		Password  string `json:"password"`
+		ExpiresIn int    `json:"expires_in_seconds"`
 	}
 
 	type createdUser struct {
@@ -110,6 +111,7 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email     string    `json:"email"`
+		Token     string    `json:"token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -140,11 +142,28 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var seconds int
+	if dat.ExpiresIn == 0 {
+		seconds = 3600
+	} else {
+		seconds = dat.ExpiresIn
+	}
+
+	// Generate JWT
+	jwt, err := auth.MakeJWT(user.ID, cfg.secretKey, time.Duration(seconds)*time.Second)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to generate the JWT...\n"))
+		w.Write([]byte(err.Error()))
+		return
+	}
+
 	loggedInUser := createdUser{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		Token:     jwt,
 	}
 	response, err := json.Marshal(loggedInUser)
 	if err != nil {
@@ -224,6 +243,22 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jwt, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Unauthorized\"}"))
+		log.Println("Error getting JWT: %s", err)
+		return
+	}
+
+	valid, err := auth.ValidateJWT(jwt, cfg.secretKey)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Unauthorized\"}"))
+		log.Println("Error validating JWT: %s", err)
+		return
+	}
+
 	if len(dat.Body) > 140 {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
@@ -252,7 +287,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 
 	params := database.CreateChirpParams{
 		Body:   cleanedDat.CleanedBody,
-		UserID: dat.UserID,
+		UserID: valid,
 	}
 
 	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), params)

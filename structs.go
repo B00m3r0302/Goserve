@@ -11,6 +11,7 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	dbQueries      *database.Queries
+	secretKey      string
 }
 
 type User struct {

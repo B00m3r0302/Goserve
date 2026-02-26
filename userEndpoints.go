@@ -18,10 +18,11 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type createdUser struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+		ID          uuid.UUID `json:"id"`
+		CreatedAt   time.Time `json:"created_at"`
+		UpdatedAt   time.Time `json:"updated_at"`
+		Email       string    `json:"email"`
+		IsChirpyRed bool      `json:"is_chirpy_red"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -69,10 +70,11 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := createdUser{
-		ID:        newUser.ID,
-		CreatedAt: newUser.CreatedAt,
-		UpdatedAt: newUser.UpdatedAt,
-		Email:     newUser.Email,
+		ID:          newUser.ID,
+		CreatedAt:   newUser.CreatedAt,
+		UpdatedAt:   newUser.UpdatedAt,
+		Email:       newUser.Email,
+		IsChirpyRed: newUser.IsChirpyRed,
 	}
 
 	returnMsg, err := json.Marshal(response)
@@ -285,7 +287,36 @@ func (cfg *apiConfig) upgradeToRed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type input struct {
-		Event string `json:"user_id"`
+		Event string `json:"event"`
 		Data  data   `json:"data"`
 	}
+
+	decoder := json.NewDecoder(r.Body)
+	dat := input{}
+	err := decoder.Decode(&dat)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		message := map[string]string{"error": "could not decode JSON body"}
+		errDat, _ := json.Marshal(message)
+		w.Write(errDat)
+		log.Printf("Error decoding JSON body: %s", err)
+		return
+	}
+
+	if dat.Event == "user.upgraded" {
+		err = cfg.dbQueries.UpgradeToRed(r.Context(), dat.Data.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("Something went wrong while trying to upgrade the user user not found...\n"))
+			w.Write([]byte(err.Error()))
+			log.Printf("Something went wrong while trying to upgrade the user user not found: %s", err)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+
 }

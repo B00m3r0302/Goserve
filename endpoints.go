@@ -260,7 +260,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("{\"message\": \"Unauthorized\"}"))
-		log.Println("Error getting JWT: %s", err)
+		log.Printf("Error getting JWT: %s", err)
 		return
 	}
 
@@ -268,7 +268,7 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("{\"message\": \"Unauthorized\"}"))
-		log.Println("Error validating JWT: %s", err)
+		log.Printf("Error validating JWT: %s", err)
 		return
 	}
 
@@ -417,7 +417,7 @@ func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("{\"message\": \"No token provided\"}"))
-		log.Println("Error getting JWT, was not provided: %s", err)
+		log.Printf("Error getting JWT, was not provided: %s", err)
 		return
 	}
 
@@ -427,14 +427,14 @@ func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to get the token values...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to get the token values: %s", err)
+		log.Printf("Something went wrong while trying to get the token values: %s", err)
 		return
 	}
 
 	if results.ExpiresAt.Before(time.Now().Add(1*time.Hour)) || results.RevokedAt.Valid {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("{\"message\": \"Token expired or revoked\"}"))
-		log.Println("Token expired or revoked: %s", err)
+		log.Printf("Token expired or revoked: %s", err)
 		return
 	}
 
@@ -443,7 +443,7 @@ func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to generate the JWT...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to generate the JWT: %s", err)
+		log.Printf("Something went wrong while trying to generate the JWT: %s", err)
 		return
 	}
 
@@ -453,7 +453,7 @@ func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to validate the JWT...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to validate the JWT: %s", err)
+		log.Printf("Something went wrong while trying to validate the JWT: %s", err)
 		return
 	}
 
@@ -466,7 +466,7 @@ func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to encode the response...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to encode the response: %s", err)
+		log.Printf("Something went wrong while trying to encode the response: %s", err)
 		return
 	}
 
@@ -482,7 +482,7 @@ func (cfg *apiConfig) revokeToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("{\"message\": \"No token provided\"}"))
-		log.Println("Error getting JWT, was not provided: %s", err)
+		log.Printf("Error getting JWT, was not provided: %s", err)
 		return
 	}
 
@@ -491,7 +491,7 @@ func (cfg *apiConfig) revokeToken(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to revoke the token...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to revoke the token: %s", err)
+		log.Printf("Something went wrong while trying to revoke the token: %s", err)
 		return
 	}
 
@@ -516,7 +516,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("{\"message\": \"No token provided\"}"))
-		log.Println("Error getting JWT, was not provided: %s", err)
+		log.Printf("Error getting JWT, was not provided: %s", err)
 		return
 	}
 
@@ -524,7 +524,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("{\"message\": \"Invalid token\"}"))
-		log.Println("Error validating JWT: %s", err)
+		log.Printf("Error validating JWT: %s", err)
 	}
 
 	user, err := cfg.dbQueries.GetUserById(r.Context(), userId)
@@ -532,7 +532,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to get the user...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to get the user: %s", err)
+		log.Printf("Something went wrong while trying to get the user: %s", err)
 		return
 	}
 
@@ -545,7 +545,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 		message := map[string]string{"error": "could not decode JSON body"}
 		errDat, _ := json.Marshal(message)
 		w.Write(errDat)
-		log.Println("Error decoding JSON body: %s", err)
+		log.Printf("Error decoding JSON body: %s", err)
 		return
 	}
 
@@ -554,7 +554,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to hash the password...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to hash the password: %s", err)
+		log.Printf("Something went wrong while trying to hash the password: %s", err)
 		return
 	}
 
@@ -569,7 +569,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to update the user...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to update the user: %s", err)
+		log.Printf("Something went wrong while trying to update the user: %s", err)
 		return
 	}
 
@@ -585,11 +585,62 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Something went wrong while trying to marshal the user...\n"))
 		w.Write([]byte(err.Error()))
-		log.Println("Something went wrong while trying to marshal the user: %s", err)
+		log.Printf("Something went wrong while trying to marshal the user: %s", err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write(finalResponse)
+}
+
+func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
+	// Check for token in the header
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"No token provided\"}"))
+		log.Printf("Error getting JWT, was not provided: %s", err)
+		return
+	}
+
+	userId, err := auth.ValidateJWT(token, cfg.secretKey)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Invalid token\"}"))
+		log.Printf("Error validating JWT: %s", err)
+		return
+	}
+
+	chirpIDStr := r.PathValue("chirpID")
+	ChirpID, err := uuid.Parse(chirpIDStr)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Can't find Chirp"))
+		w.Write([]byte(err.Error()))
+		log.Printf("Error finding chirp with ID: %s", err)
+		return
+	}
+
+	deleteParams := database.DeleteChirpParams{
+		ID:     ChirpID,
+		UserID: userId,
+	}
+
+	rows, err := cfg.dbQueries.DeleteChirp(r.Context(), deleteParams)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to delete the chirp...\n"))
+		w.Write([]byte(err.Error()))
+		log.Printf("Something went wrong while trying to delete the chirp: %s", err)
+		return
+	}
+
+	if rows == 0 {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("You are not allowed to delete this chirp"))
+		log.Printf("User is not allowed to delete this chirp: %s\n", err)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

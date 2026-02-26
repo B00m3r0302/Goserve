@@ -496,5 +496,100 @@ func (cfg *apiConfig) revokeToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
 
+func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
+	type input struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	type returnUser struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+
+	// Check for token in the header
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"No token provided\"}"))
+		log.Println("Error getting JWT, was not provided: %s", err)
+		return
+	}
+
+	userId, err := auth.ValidateJWT(token, cfg.secretKey)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Invalid token\"}"))
+		log.Println("Error validating JWT: %s", err)
+	}
+
+	user, err := cfg.dbQueries.GetUserById(r.Context(), userId)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to get the user...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to get the user: %s", err)
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	dat := input{}
+	err = decoder.Decode(&dat)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		message := map[string]string{"error": "could not decode JSON body"}
+		errDat, _ := json.Marshal(message)
+		w.Write(errDat)
+		log.Println("Error decoding JSON body: %s", err)
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(dat.Password)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to hash the password...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to hash the password: %s", err)
+		return
+	}
+
+	updatedInfo := database.UpdateUserDataParams{
+		ID:             user.ID,
+		Email:          dat.Email,
+		HashedPassword: hashedPassword,
+	}
+
+	err = cfg.dbQueries.UpdateUserData(r.Context(), updatedInfo)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to update the user...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to update the user: %s", err)
+		return
+	}
+
+	finalStruct := returnUser{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: time.Now(),
+		Email:     dat.Email,
+	}
+
+	finalResponse, err := json.Marshal(finalStruct)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to marshal the user...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to marshal the user: %s", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(finalResponse)
 }

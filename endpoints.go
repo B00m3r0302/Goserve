@@ -398,7 +398,9 @@ func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
 
 	final, err := json.Marshal(response)
 	if err != nil {
-		panic(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong"))
+		w.Write([]byte(err.Error()))
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -407,6 +409,10 @@ func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
+	type newToken struct {
+		Token string `json:"token"`
+	}
+
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -415,21 +421,80 @@ func (cfg *apiConfig) refreshServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = auth.ValidateJWT(token, cfg.secretKey)
+	// Check if expired or revoked
+	results, err := cfg.dbQueries.GetTokenExpiresRevokeByToken(r.Context(), token)
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("{\"message\": \"Header is not valid\"}"))
-		log.Println("Error validating JWT INVALID: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to get the token values...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to get the token values: %s", err)
 		return
 	}
 
-	err = cfg.dbQueries.CheckTokenExpired(r.Context(), token)
-	if err != nil {
+	if results.ExpiresAt.Before(time.Now().Add(1*time.Hour)) || results.RevokedAt.Valid {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("{\"message\": \"Token is expired\"}"))
-		log.Println("Error validating JWT EXPIRED: %s", err)
+		w.Write([]byte("{\"message\": \"Token expired or revoked\"}"))
+		log.Println("Token expired or revoked: %s", err)
+		return
 	}
 
+	newJWT, err := auth.MakeJWT(results.UserID, cfg.secretKey)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to generate the JWT...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to generate the JWT: %s", err)
+		return
+	}
+
+	// validate JWT
+	_, err = auth.ValidateJWT(newJWT, cfg.secretKey)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to validate the JWT...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to validate the JWT: %s", err)
+		return
+	}
+
+	response := newToken{
+		Token: newJWT,
+	}
+
+	final, err := json.Marshal(response)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to encode the response...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to encode the response: %s", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+	w.Write(final)
+
+}
+
+func (cfg *apiConfig) revokeToken(w http.ResponseWriter, r *http.Request) {
+	// Check for token in header
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"No token provided\"}"))
+		log.Println("Error getting JWT, was not provided: %s", err)
+		return
+	}
+
+	err = cfg.dbQueries.RevokeToken(r.Context(), token)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong while trying to revoke the token...\n"))
+		w.Write([]byte(err.Error()))
+		log.Println("Something went wrong while trying to revoke the token: %s", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 
 }

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl -d archlinux bash -c:*)",
+      "Bash(git checkout:*)"
+    ]
+  }
+}

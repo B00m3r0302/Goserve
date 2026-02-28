@@ -13,7 +13,7 @@ import (
 
 const upgradeToRed = `-- name: UpgradeToRed :exec
 UPDATE users
-SET is_chirpy_rec = true
+SET is_chirpy_red = true
 WHERE id = $1
 `
 

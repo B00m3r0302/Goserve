@@ -98,6 +98,7 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt    time.Time `json:"created_at"`
 		UpdatedAt    time.Time `json:"updated_at"`
 		Email        string    `json:"email"`
+		IsChirpyRed  bool      `json:"is_chirpy_red"`
 		Token        string    `json:"token"`
 		RefreshToken string    `json:"refresh_token"`
 	}
@@ -163,6 +164,7 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    user.CreatedAt,
 		UpdatedAt:    user.UpdatedAt,
 		Email:        user.Email,
+		IsChirpyRed:  user.IsChirpyRed,
 		Token:        jwt,
 		RefreshToken: refreshToken,
 	}
@@ -192,10 +194,11 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type returnUser struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+		ID          uuid.UUID `json:"id"`
+		CreatedAt   time.Time `json:"created_at"`
+		UpdatedAt   time.Time `json:"updated_at"`
+		Email       string    `json:"email"`
+		IsChirpyRed bool      `json:"is_chirpy_red"`
 	}
 
 	// Check for token in the header
@@ -261,10 +264,11 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	finalStruct := returnUser{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: time.Now(),
-		Email:     dat.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   time.Now(),
+		Email:       dat.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	finalResponse, err := json.Marshal(finalStruct)
@@ -304,19 +308,16 @@ func (cfg *apiConfig) upgradeToRed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if dat.Event == "user.upgraded" {
-		err = cfg.dbQueries.UpgradeToRed(r.Context(), dat.Data.UserID)
-		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Something went wrong while trying to upgrade the user user not found...\n"))
-			w.Write([]byte(err.Error()))
-			log.Printf("Something went wrong while trying to upgrade the user user not found: %s", err)
-			return
-		}
-
+	if dat.Event != "user.upgraded" {
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	err = cfg.dbQueries.UpgradeToRed(r.Context(), dat.Data.UserID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-
 }

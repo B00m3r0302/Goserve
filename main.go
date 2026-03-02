@@ -34,7 +34,9 @@ func main() {
 	port := ":8080"
 	healthHandler := http.HandlerFunc(healthCheck)
 	c := &apiConfig{
-		dbQueries: dbQueries,
+		dbQueries:   dbQueries,
+		secretKey:   os.Getenv("SECRET_KEY"),
+		PolkaAPIKey: os.Getenv("POLKA_KEY"),
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/app/", c.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(filepathRoot)))))

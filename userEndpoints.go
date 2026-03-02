@@ -295,9 +295,24 @@ func (cfg *apiConfig) upgradeToRed(w http.ResponseWriter, r *http.Request) {
 		Data  data   `json:"data"`
 	}
 
+	// Check for token in the header
+	ApiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"No API Key provided\"}"))
+		log.Printf("Error getting API Key, was not provided: %s", err)
+		return
+	}
+
+	if ApiKey != cfg.PolkaAPIKey {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("{\"message\": \"Invalid API Key\"}"))
+		log.Printf("Error validating API Key: %s", err)
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	dat := input{}
-	err := decoder.Decode(&dat)
+	err = decoder.Decode(&dat)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)

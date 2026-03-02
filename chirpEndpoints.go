@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"time"
 
 	"github.com/B00m3r0302/Goserve/internal/auth"
@@ -126,6 +127,55 @@ func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 		UserID    uuid.UUID `json:"user_id"`
 	}
 
+	sortOrder := r.URL.Query().Get("sort")
+	if sortOrder == "" {
+		sortOrder = "asc"
+	}
+
+	sortFn := func(response []chirpResponse) {
+		sort.Slice(response, func(i, j int) bool {
+			if sortOrder == "desc" {
+				return response[i].CreatedAt.After(response[j].CreatedAt)
+			}
+			return response[i].CreatedAt.Before(response[j].CreatedAt)
+		})
+	}
+
+	authorIDStr := r.URL.Query().Get("author_id")
+	if authorIDStr != "" {
+		authorID, err := uuid.Parse(authorIDStr)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Invalid author_id"))
+			return
+		}
+
+		chirps, err := cfg.dbQueries.GetChirpByAuthor(r.Context(), authorID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Something went wrong while trying to get all chirps...\n"))
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		response := make([]chirpResponse, len(chirps))
+		for i, chirp := range chirps {
+			response[i] = chirpResponse{
+				ID:        chirp.ID,
+				CreatedAt: chirp.CreatedAt,
+				UpdatedAt: chirp.UpdatedAt,
+				Body:      chirp.Body,
+				UserID:    chirp.UserID,
+			}
+		}
+		sortFn(response)
+		final, _ := json.Marshal(response)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(final)
+		return
+	}
+
 	chirps, err := cfg.dbQueries.GetAllChirps(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -134,15 +184,16 @@ func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := make([]chirpResponse, len(chirps))
-	for chirp := range chirps {
-		response[chirp] = chirpResponse{
-			ID:        chirps[chirp].ID,
-			CreatedAt: chirps[chirp].CreatedAt,
-			UpdatedAt: chirps[chirp].UpdatedAt,
-			Body:      chirps[chirp].Body,
-			UserID:    chirps[chirp].UserID,
+	for i, chirp := range chirps {
+		response[i] = chirpResponse{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
 		}
 	}
+	sortFn(response)
 	final, err := json.Marshal(response)
 	if err != nil {
 		panic(err)
